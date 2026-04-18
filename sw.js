@@ -1,4 +1,4 @@
-const CACHE = 'album-elias-v1';
+const CACHE = 'album-elias-v3';
 const LOCAL_ASSETS = [
   '/',
   '/index.html',
