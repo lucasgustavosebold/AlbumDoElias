@@ -12,6 +12,8 @@ const auth  = getAuth(fbApp);
 const db    = getFirestore(fbApp);
 
 // ===== CONSTANTS =====
+const ALBUM_MEM  = 'album/elias/memories';  // caminho fixo, compartilhado
+const ALBUM_META = 'album/elias/meta';       // capa e metadados
 const BIRTH      = new Date('2026-04-02');
 const MAX_PHOTOS = 6;
 const MAX_PX     = 720;
@@ -40,7 +42,6 @@ const SUGGESTIONS = [
 
 // ===== STATE =====
 let currentUser   = null;
-let familyUID     = null;
 let memories      = [];
 let currentMemId  = null;
 let unsubMemories = null;
@@ -83,7 +84,7 @@ async function showApp(user) {
   el('user-menu-avatar').src   = user.photoURL || '';
   el('user-menu-name').textContent  = user.displayName || '';
   el('user-menu-email').textContent = user.email || '';
-  await initFamily();
+  await migrateOldData();
   subscribeMemories();
   loadCoverPhoto();
   updateAge();
@@ -94,29 +95,31 @@ async function showApp(user) {
   handleRoute();
 }
 
-async function initFamily() {
+async function migrateOldData() {
   try {
-    // Verifica se o usuário atual tem memórias (é o dono dos dados)
-    const mySnap = await getDocs(query(
-      collection(db, `users/${currentUser.uid}/memories`), limit(1)
-    ));
-    if (!mySnap.empty) {
-      // Este usuário tem dados — ele é o dono
-      familyUID = currentUser.uid;
-      await setDoc(doc(db, 'config', 'family'), { ownerUID: familyUID }, { merge: true });
-      return;
+    // Verifica se o novo caminho já tem dados
+    const newSnap = await getDocs(query(memoriesCol(), limit(1)));
+    if (!newSnap.empty) return; // já migrado
+
+    // Tenta ler dados do caminho antigo (users/{uid}/memories)
+    const oldSnap = await getDocs(
+      query(collection(db, `users/${currentUser.uid}/memories`), orderBy('date', 'desc'))
+    );
+    if (oldSnap.empty) return;
+
+    // Copia cada memória para o novo caminho compartilhado
+    for (const d of oldSnap.docs) {
+      await setDoc(doc(db, ALBUM_MEM, d.id), d.data());
     }
-    // Sem dados próprios — usa o dono registrado em config/family
-    const cfgSnap = await getDoc(doc(db, 'config', 'family'));
-    if (cfgSnap.exists()) {
-      familyUID = cfgSnap.data().ownerUID;
-    } else {
-      familyUID = currentUser.uid;
-      await setDoc(doc(db, 'config', 'family'), { ownerUID: familyUID }, { merge: true });
+
+    // Copia metadados (capa)
+    const oldMeta = await getDoc(doc(db, 'users', currentUser.uid));
+    if (oldMeta.exists()) {
+      await setDoc(doc(db, ALBUM_META), oldMeta.data(), { merge: true });
     }
-  } catch {
-    familyUID = currentUser.uid;
-  }
+
+    showToast('Álbum migrado para caminho compartilhado ✓');
+  } catch (_) {}
 }
 
 // ===== USER MENU =====
@@ -128,7 +131,7 @@ window.signOutUser  = signOutUser;
 
 // ===== FIRESTORE =====
 function memoriesCol() {
-  return collection(db, `users/${familyUID}/memories`);
+  return collection(db, ALBUM_MEM);
 }
 
 function subscribeMemories() {
@@ -227,7 +230,7 @@ function updateAge() {
 // ===== COVER PHOTO =====
 async function loadCoverPhoto() {
   try {
-    const snap = await getDoc(doc(db, 'users', familyUID));
+    const snap = await getDoc(doc(db, ALBUM_META));
     if (snap.exists() && snap.data().coverPhoto) applyCover(snap.data().coverPhoto);
   } catch (_) {}
 }
@@ -247,7 +250,7 @@ async function uploadCoverPhoto(e) {
   showToast('Processando capa...');
   const dataUrl = await compressImage(file, 1024, 0.78);
   applyCover(dataUrl);
-  await setDoc(doc(db, 'users', familyUID), { coverPhoto: dataUrl }, { merge: true });
+  await setDoc(doc(db, ALBUM_META), { coverPhoto: dataUrl }, { merge: true });
   showToast('Capa atualizada ✓');
 }
 
@@ -499,7 +502,7 @@ async function saveMemory(e) {
       createdAt: serverTimestamp(),
     });
 
-    await setDoc(doc(db, 'users', familyUID), { lastMemoryAt: serverTimestamp() }, { merge: true });
+    await setDoc(doc(db, ALBUM_META), { lastMemoryAt: serverTimestamp() }, { merge: true });
     showHeartAnimation();
     showToast('Memória salva com carinho ❤️');
     navigate('album');
@@ -563,7 +566,7 @@ window.openDetailLightbox = openDetailLightbox;
 async function deleteMemory() {
   if (!currentMemId || !confirm('Apagar esta memória? Não pode ser desfeito.')) return;
   try {
-    await deleteDoc(doc(db, `users/${familyUID}/memories`, currentMemId));
+    await deleteDoc(doc(db, ALBUM_MEM, currentMemId));
     navigate('album');
     showToast('Memória apagada');
   } catch { showToast('Erro ao apagar'); }
