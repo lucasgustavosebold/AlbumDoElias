@@ -196,7 +196,11 @@ body {
   box-shadow: 0 1px 8px rgba(60,35,15,0.06);
 }
 .memory-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
-.memory-card-img { width: 100%; height: 220px; object-fit: contain; background: var(--sand-pale); display: block; }
+.memory-card-img {
+  width: 100%; max-height: 320px; min-height: 160px;
+  object-fit: contain; object-position: center;
+  background: var(--sand-pale); display: block;
+}
 .memory-card-body { padding: 14px 16px; }
 .memory-card-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .memory-card-date { font-size: 12px; color: var(--text-soft); }
@@ -260,8 +264,12 @@ select.form-input { cursor: pointer; }
 .photo-drop-zone:hover { border-color: var(--gold-mid); background: var(--gold-pale); }
 .drop-icon { font-size: 28px; }
 .photo-previews { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
-.photo-preview-item { position: relative; aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden; }
-.photo-preview-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-preview-item {
+  position: relative; aspect-ratio: 1; border-radius: var(--radius-sm);
+  overflow: hidden; background: var(--sand-pale);
+  display: flex; align-items: center; justify-content: center;
+}
+.photo-preview-item img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
 .photo-preview-remove {
   position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
   border-radius: 50%; background: rgba(0,0,0,0.55); color: white;
@@ -324,8 +332,12 @@ select.form-input { cursor: pointer; }
 /* PHOTO CAROUSEL */
 .photo-carousel { overflow-x: auto; scroll-snap-type: x mandatory; display: flex; scrollbar-width: none; }
 .photo-carousel::-webkit-scrollbar { display: none; }
-.carousel-slide { flex-shrink: 0; width: 100%; scroll-snap-align: start; }
-.carousel-slide img { width: 100%; max-height: 340px; object-fit: contain; background: var(--sand-pale); display: block; }
+.carousel-slide { flex-shrink: 0; width: 100%; scroll-snap-align: start; display: flex; justify-content: center; background: var(--sand-pale); }
+.carousel-slide img {
+  max-width: 100%; max-height: 70vh;
+  object-fit: contain; object-position: center;
+  display: block;
+}
 .carousel-dots { display: flex; justify-content: center; gap: 6px; padding: 10px; }
 .carousel-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); transition: background 0.2s; cursor: pointer; border: none; }
 .carousel-dot.active { background: var(--gold); }
