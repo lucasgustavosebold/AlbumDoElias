@@ -3,7 +3,7 @@ import { initializeApp }                              from 'https://www.gstatic.
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
                                                       from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, setDoc, addDoc, deleteDoc,
-         onSnapshot, query, orderBy, serverTimestamp }
+         onSnapshot, query, orderBy, serverTimestamp, getDocs, limit }
                                                       from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
 // ===== FIREBASE INIT =====
@@ -96,13 +96,23 @@ async function showApp(user) {
 
 async function initFamily() {
   try {
-    const cfgRef  = doc(db, 'config', 'family');
-    const cfgSnap = await getDoc(cfgRef);
+    // Verifica se o usuário atual tem memórias (é o dono dos dados)
+    const mySnap = await getDocs(query(
+      collection(db, `users/${currentUser.uid}/memories`), limit(1)
+    ));
+    if (!mySnap.empty) {
+      // Este usuário tem dados — ele é o dono
+      familyUID = currentUser.uid;
+      await setDoc(doc(db, 'config', 'family'), { ownerUID: familyUID }, { merge: true });
+      return;
+    }
+    // Sem dados próprios — usa o dono registrado em config/family
+    const cfgSnap = await getDoc(doc(db, 'config', 'family'));
     if (cfgSnap.exists()) {
       familyUID = cfgSnap.data().ownerUID;
     } else {
       familyUID = currentUser.uid;
-      await setDoc(cfgRef, { ownerUID: currentUser.uid, createdAt: serverTimestamp() });
+      await setDoc(doc(db, 'config', 'family'), { ownerUID: familyUID }, { merge: true });
     }
   } catch {
     familyUID = currentUser.uid;
