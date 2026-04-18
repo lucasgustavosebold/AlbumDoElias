@@ -13,7 +13,7 @@ const db    = getFirestore(fbApp);
 
 // ===== CONSTANTS =====
 const ALBUM_MEM  = 'album/elias/memories';  // caminho fixo, compartilhado
-const ALBUM_META = 'album/elias/meta';       // capa e metadados
+const ALBUM_META = 'album/elias';            // capa e metadados (documento pai)
 const BIRTH      = new Date('2026-04-02');
 const MAX_PHOTOS = 6;
 const MAX_PX     = 720;
