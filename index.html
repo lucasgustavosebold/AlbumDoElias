@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#FAF7F2">
+  <title>Álbum do Elias</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- LOADING -->
+  <div id="screen-loading" class="screen-loading">
+    <div class="loading-inner">
+      <div class="loading-star">✦</div>
+      <p>Álbum do Elias</p>
+    </div>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="screen-login" class="screen-login hidden">
+    <div class="login-bg"></div>
+    <div class="login-card">
+      <div class="login-icon">✦</div>
+      <h1 class="login-title">Álbum do<br><em>Elias</em></h1>
+      <p class="login-sub">Um livro de memórias para os seus primeiros dias</p>
+      <button id="btn-google-login" class="btn-google">
+        <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 002.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 01-7.18-2.54H1.83v2.07A8 8 0 008.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 010-3.04V5.41H1.83a8 8 0 000 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 001.83 5.4L4.5 7.49a4.77 4.77 0 014.48-3.3z"/></svg>
+        Entrar com Google
+      </button>
+      <p class="login-note">Somente os pais têm acesso</p>
+    </div>
+  </div>
+
+  <!-- APP PRINCIPAL -->
+  <div id="screen-app" class="hidden">
+
+    <!-- TOP BAR -->
+    <header id="top-bar" class="top-bar">
+      <span id="top-bar-title" class="top-bar-title">Álbum do Elias</span>
+      <div class="top-bar-actions">
+        <img id="user-avatar" class="user-avatar" src="" alt="" onclick="showUserMenu()">
+      </div>
+    </header>
+
+    <!-- USER MENU -->
+    <div id="user-menu" class="user-menu hidden">
+      <div class="user-menu-info">
+        <img id="user-menu-avatar" src="" alt="">
+        <div>
+          <div id="user-menu-name" class="user-menu-name"></div>
+          <div id="user-menu-email" class="user-menu-email"></div>
+        </div>
+      </div>
+      <button class="user-menu-item" onclick="signOutUser()">Sair</button>
+    </div>
+    <div id="user-menu-backdrop" class="backdrop hidden" onclick="hideUserMenu()"></div>
+
+    <!-- PAGES -->
+    <main id="page-container" class="page-container">
+
+      <!-- HOME -->
+      <section id="page-home" class="page">
+        <div class="home-cover" id="home-cover">
+          <div class="home-cover-overlay"></div>
+          <button class="home-cover-edit" onclick="triggerCoverUpload()" title="Trocar foto de capa">✎</button>
+          <input type="file" id="cover-upload-input" accept="image/*" class="hidden" onchange="uploadCoverPhoto(event)">
+          <div class="home-cover-content">
+            <div class="home-gold-ornament">✦</div>
+            <h1 class="home-name">Elias</h1>
+            <div id="home-age" class="home-age"></div>
+            <p class="home-birthdate">nasceu em 2 de abril de 2026</p>
+          </div>
+        </div>
+        <div class="home-body">
+          <div id="home-phrase" class="home-phrase"></div>
+          <div id="home-stats" class="home-stats"></div>
+          <div class="home-recent">
+            <h3 class="home-section-title">Memórias recentes</h3>
+            <div id="home-recent-list" class="home-recent-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ÁLBUM -->
+      <section id="page-album" class="page hidden">
+        <div class="album-header">
+          <h2 class="page-title">Álbum</h2>
+          <div class="album-filters" id="album-filters">
+            <button class="filter-chip active" data-cat="all">Todas</button>
+            <button class="filter-chip" data-cat="Cotidiano">Cotidiano</button>
+            <button class="filter-chip" data-cat="Família">Família</button>
+            <button class="filter-chip" data-cat="Passeio">Passeio</button>
+            <button class="filter-chip" data-cat="Consulta">Consulta</button>
+            <button class="filter-chip" data-cat="Soninho">Soninho</button>
+            <button class="filter-chip" data-cat="Especial">Especial</button>
+          </div>
+        </div>
+        <div id="album-list" class="album-list"></div>
+      </section>
+
+      <!-- GALERIA -->
+      <section id="page-gallery" class="page hidden">
+        <div class="gallery-header">
+          <h2 class="page-title">Galeria</h2>
+        </div>
+        <div id="gallery-grid" class="gallery-grid"></div>
+      </section>
+
+      <!-- ADICIONAR MEMÓRIA -->
+      <section id="page-add" class="page hidden">
+        <div class="form-header">
+          <button class="btn-back" onclick="navigate('album')">← Voltar</button>
+          <h2 class="form-title">Nova Memória</h2>
+        </div>
+        <form id="add-form" class="add-form" onsubmit="saveMemory(event)">
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Data</label>
+              <input type="date" id="f-date" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Hora</label>
+              <input type="time" id="f-time" class="form-input">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Título</label>
+            <input type="text" id="f-title" class="form-input" placeholder="Ex: Primeiro banho em casa..." required maxlength="80">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Categoria</label>
+            <div class="cat-selector" id="cat-selector">
+              <label class="cat-opt"><input type="radio" name="cat" value="Cotidiano" checked><span>Cotidiano</span></label>
+              <label class="cat-opt"><input type="radio" name="cat" value="Família"><span>Família</span></label>
+              <label class="cat-opt"><input type="radio" name="cat" value="Passeio"><span>Passeio</span></label>
+              <label class="cat-opt"><input type="radio" name="cat" value="Consulta"><span>Consulta</span></label>
+              <label class="cat-opt"><input type="radio" name="cat" value="Soninho"><span>Soninho</span></label>
+              <label class="cat-opt"><input type="radio" name="cat" value="Especial"><span>✦ Especial</span></label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Fotos</label>
+            <div class="photo-drop-zone" onclick="document.getElementById('f-photos').click()">
+              <input type="file" id="f-photos" accept="image/*" multiple capture="environment" class="hidden" onchange="onPhotosSelected(event)">
+              <span class="drop-icon">📷</span>
+              <span>Toque para adicionar fotos</span>
+            </div>
+            <div id="photo-previews" class="photo-previews"></div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Áudio</label>
+            <div class="audio-section" id="audio-section">
+              <div class="audio-buttons">
+                <button type="button" class="btn-audio-record" id="btn-record" onclick="toggleRecording()">
+                  <span id="rec-icon">🎙️</span> <span id="rec-label">Gravar</span>
+                </button>
+                <span class="audio-or">ou</span>
+                <button type="button" class="btn-audio-upload" onclick="document.getElementById('f-audio').click()">
+                  📁 Enviar arquivo
+                </button>
+                <input type="file" id="f-audio" accept="audio/*" class="hidden" onchange="onAudioFileSelected(event)">
+              </div>
+              <div id="rec-timer" class="rec-timer hidden">⏺ <span id="rec-time">0:00</span></div>
+              <div id="audio-preview" class="audio-preview hidden"></div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Mensagem afetiva</label>
+            <textarea id="f-comment" class="form-textarea" rows="5"
+              placeholder="O que você sentiu nesse momento? O que quer que o Elias saiba quando crescer?"></textarea>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="btn-save" class="btn-primary btn-full">Salvar com carinho ❤️</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- DETALHE DA MEMÓRIA -->
+      <section id="page-detail" class="page hidden">
+        <div class="detail-topbar">
+          <button class="btn-back" onclick="navigate('album')">← Voltar</button>
+          <div class="detail-actions">
+            <button class="btn-icon" onclick="shareMemory()" title="Compartilhar">↑</button>
+            <button class="btn-icon btn-danger" onclick="deleteMemory()" title="Apagar">🗑</button>
+          </div>
+        </div>
+        <div id="detail-content" class="detail-content"></div>
+      </section>
+
+      <!-- LEMBRETES -->
+      <section id="page-reminders" class="page hidden">
+        <h2 class="page-title" style="padding:20px 0 16px">Lembretes</h2>
+        <div class="reminders-card">
+          <p class="reminders-desc">Receba um lembrete quando passar muitos dias sem registrar uma memória.</p>
+          <div class="form-group">
+            <label class="form-label">Lembrar a cada</label>
+            <select id="r-days" class="form-input">
+              <option value="1">1 dia</option>
+              <option value="2" selected>2 dias</option>
+              <option value="3">3 dias</option>
+              <option value="5">5 dias</option>
+              <option value="7">1 semana</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Sugestões de momentos para registrar</label>
+            <div id="suggestions-list" class="suggestions-list"></div>
+          </div>
+          <button class="btn-primary btn-full" onclick="saveReminders()">Ativar Lembretes</button>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- BOTTOM NAV -->
+    <nav id="bottom-nav" class="bottom-nav">
+      <button class="nav-tab active" data-page="home" onclick="navigate('home')">
+        <span class="nav-icon">🏠</span>
+        <span class="nav-label">Início</span>
+      </button>
+      <button class="nav-tab" data-page="album" onclick="navigate('album')">
+        <span class="nav-icon">📖</span>
+        <span class="nav-label">Álbum</span>
+      </button>
+      <button class="nav-tab nav-tab-fab" onclick="navigate('add')">
+        <span class="nav-fab">＋</span>
+      </button>
+      <button class="nav-tab" data-page="gallery" onclick="navigate('gallery')">
+        <span class="nav-icon">🖼️</span>
+        <span class="nav-label">Galeria</span>
+      </button>
+      <button class="nav-tab" data-page="reminders" onclick="navigate('reminders')">
+        <span class="nav-icon">🔔</span>
+        <span class="nav-label">Lembretes</span>
+      </button>
+    </nav>
+
+  </div><!-- /screen-app -->
+
+  <!-- LIGHTBOX -->
+  <div id="lightbox" class="lightbox hidden" onclick="closeLightbox(event)">
+    <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+    <button class="lightbox-prev" onclick="lightboxNav(-1)">‹</button>
+    <img id="lightbox-img" src="" alt="" class="lightbox-img">
+    <button class="lightbox-next" onclick="lightboxNav(1)">›</button>
+    <div id="lightbox-caption" class="lightbox-caption"></div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Share canvas target -->
+  <div id="share-target" class="share-target hidden"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
