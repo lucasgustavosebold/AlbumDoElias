@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#FAF7F2">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Álbum Elias">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
   <title>Álbum do Elias</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
@@ -148,7 +153,7 @@
           <div class="form-group">
             <label class="form-label">Fotos</label>
             <div class="photo-drop-zone" onclick="document.getElementById('f-photos').click()">
-              <input type="file" id="f-photos" accept="image/*" multiple capture="environment" class="hidden" onchange="onPhotosSelected(event)">
+              <input type="file" id="f-photos" accept="image/*" multiple class="hidden" onchange="onPhotosSelected(event)">
               <span class="drop-icon">📷</span>
               <span>Toque para adicionar fotos</span>
             </div>
@@ -164,9 +169,9 @@
                 </button>
                 <span class="audio-or">ou</span>
                 <button type="button" class="btn-audio-upload" onclick="document.getElementById('f-audio').click()">
-                  📁 Enviar arquivo
+                  📁 Enviar áudio
                 </button>
-                <input type="file" id="f-audio" accept="audio/*" class="hidden" onchange="onAudioFileSelected(event)">
+                <input type="file" id="f-audio" accept="audio/*,video/mp4" class="hidden" onchange="onAudioFileSelected(event)">
               </div>
               <div id="rec-timer" class="rec-timer hidden">⏺ <span id="rec-time">0:00</span></div>
               <div id="audio-preview" class="audio-preview hidden"></div>
@@ -264,5 +269,10 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script type="module" src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  </script>
 </body>
 </html>

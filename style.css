@@ -253,6 +253,20 @@ select.form-input { cursor: pointer; }
 }
 .cat-opt input:checked + span { background: var(--gold); border-color: var(--gold); color: white; }
 
+/* PHOTO CAPTURE BUTTONS */
+.photo-capture-btns {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+.btn-capture {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 16px 12px; border-radius: var(--radius);
+  border: 2px dashed var(--border); background: var(--sand-pale);
+  font-family: var(--font-sans); font-size: 15px; font-weight: 500;
+  color: var(--text-mid); cursor: pointer; transition: all 0.18s;
+}
+.btn-capture:hover { border-color: var(--gold-mid); background: var(--gold-pale); color: var(--gold); }
+.btn-capture-gallery { background: white; }
+
 /* PHOTO DROP ZONE */
 .photo-drop-zone {
   border: 2px dashed var(--border); border-radius: var(--radius);

@@ -309,6 +309,7 @@ function initAddForm() {
   selectedAudio  = null;
   el('add-form').reset();
   el('photo-previews').innerHTML = '';
+  const photos = el('f-photos'); if (photos) photos.value = '';
   el('audio-preview').innerHTML  = '';
   hide('audio-preview');
   hide('rec-timer');
@@ -322,15 +323,39 @@ function initAddForm() {
 
 function onPhotosSelected(e) {
   const files = Array.from(e.target.files);
-  if (selectedPhotos.length + files.length > MAX_PHOTOS) {
-    showToast(`Máximo de ${MAX_PHOTOS} fotos por memória`); return;
-  }
-  files.forEach(async f => {
-    const dataUrl = await compressImage(f, MAX_PX, QUALITY);
-    selectedPhotos.push(dataUrl);
-    addPhotoPreview(dataUrl, selectedPhotos.length - 1);
-  });
   e.target.value = '';
+  if (!files.length) return;
+
+  const slots = MAX_PHOTOS - selectedPhotos.filter(Boolean).length;
+  if (slots <= 0) { showToast(`Máximo de ${MAX_PHOTOS} fotos atingido`); return; }
+
+  const toLoad = files.slice(0, slots);
+  if (files.length > slots) showToast(`Adicionando apenas ${slots} foto${slots > 1 ? 's' : ''}`);
+
+  toLoad.forEach(f => {
+    const reader = new FileReader();
+    reader.onerror = () => showToast('Erro ao ler o arquivo de imagem');
+    reader.onload = ev => {
+      const img = new Image();
+      img.onerror = () => showToast('Formato de imagem não suportado');
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width: w, height: h } = img;
+        if (w > MAX_PX || h > MAX_PX) {
+          if (w > h) { h = Math.round(h * MAX_PX / w); w = MAX_PX; }
+          else       { w = Math.round(w * MAX_PX / h); h = MAX_PX; }
+        }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', QUALITY);
+        const idx = selectedPhotos.length;
+        selectedPhotos.push(dataUrl);
+        addPhotoPreview(dataUrl, idx);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(f);
+  });
 }
 
 function addPhotoPreview(src, index) {
@@ -353,6 +378,16 @@ window.removePhoto      = removePhoto;
 function onAudioFileSelected(e) {
   const file = e.target.files[0];
   if (!file) return;
+  if (file.type.startsWith('image/')) {
+    e.target.value = '';
+    showToast('Para fotos, use os botões "📷 Câmera" ou "🖼️ Galeria" acima');
+    return;
+  }
+  if (!file.type.startsWith('audio/') && !file.type.startsWith('video/')) {
+    e.target.value = '';
+    showToast('Selecione um arquivo de áudio (mp3, m4a, wav...)');
+    return;
+  }
   const reader = new FileReader();
   reader.onload = ev => {
     selectedAudio = { dataUrl: ev.target.result, mimeType: file.type };
