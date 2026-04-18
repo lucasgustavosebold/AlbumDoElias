@@ -5,11 +5,14 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 import { getFirestore, collection, doc, getDoc, setDoc, addDoc, deleteDoc,
          onSnapshot, query, orderBy, serverTimestamp, getDocs, limit }
                                                       from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject }
+                                                      from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-storage.js';
 
 // ===== FIREBASE INIT =====
-const fbApp = initializeApp(firebaseConfig);
-const auth  = getAuth(fbApp);
-const db    = getFirestore(fbApp);
+const fbApp   = initializeApp(firebaseConfig);
+const auth    = getAuth(fbApp);
+const db      = getFirestore(fbApp);
+const storage = getStorage(fbApp);
 
 // ===== CONSTANTS =====
 const ALBUM_MEM  = 'album/elias/memories';  // caminho fixo, compartilhado
@@ -247,10 +250,11 @@ function triggerCoverUpload() { el('cover-upload-input').click(); }
 async function uploadCoverPhoto(e) {
   const file = e.target.files[0];
   if (!file) return;
-  showToast('Processando capa...');
+  showToast('Enviando capa...');
   const dataUrl = await compressImage(file, 1024, 0.78);
   applyCover(dataUrl);
-  await setDoc(doc(db, ALBUM_META), { coverPhoto: dataUrl }, { merge: true });
+  const url = await uploadToStorage('album/cover.jpg', dataUrlToBlob(dataUrl));
+  await setDoc(doc(db, ALBUM_META), { coverPhoto: url }, { merge: true });
   showToast('Capa atualizada ✓');
 }
 
@@ -277,7 +281,7 @@ function renderAlbum() {
           <span class="memory-card-date">${fmtDate(m.date)}</span>
           <div class="memory-card-badges">
             <span class="cat-badge ${m.category}">${m.category}</span>
-            ${m.audioData ? '<span class="audio-badge">🎙️</span>' : ''}
+            ${(m.audioUrl || m.audioData) ? '<span class="audio-badge">🎙️</span>' : ''}
           </div>
         </div>
         <h3 class="memory-card-title">${esc(m.title)}</h3>
@@ -485,19 +489,38 @@ async function saveMemory(e) {
   if (!currentUser) return;
   const btn = el('btn-save');
   btn.disabled = true;
-  btn.textContent = '⏳ Salvando...';
+  btn.textContent = '⏳ Enviando fotos...';
   try {
     const dateVal = el('f-date').value;
     const timeVal = el('f-time').value || '00:00';
     const title   = el('f-title').value.trim();
     const cat     = document.querySelector('input[name="cat"]:checked')?.value || 'Cotidiano';
     const comment = el('f-comment').value.trim();
-    const photos  = selectedPhotos.filter(Boolean);
 
-    await addDoc(memoriesCol(), {
+    // Pré-gera o ID do documento para usar no caminho do Storage
+    const memRef = doc(memoriesCol());
+    const memId  = memRef.id;
+
+    // Upload das fotos para o Storage
+    const photoUrls = await Promise.all(
+      selectedPhotos.filter(Boolean).map((dataUrl, i) =>
+        uploadToStorage(`album/memories/${memId}/photo_${i}.jpg`, dataUrlToBlob(dataUrl))
+      )
+    );
+
+    // Upload do áudio para o Storage
+    let audioUrl = null;
+    if (selectedAudio) {
+      btn.textContent = '⏳ Enviando áudio...';
+      const ext = selectedAudio.mimeType.split('/')[1]?.split(';')[0] || 'webm';
+      audioUrl = await uploadToStorage(`album/memories/${memId}/audio.${ext}`, dataUrlToBlob(selectedAudio.dataUrl));
+    }
+
+    btn.textContent = '⏳ Salvando...';
+    await setDoc(memRef, {
       title, category: cat, comment,
-      photos,
-      audioData: selectedAudio?.dataUrl || null,
+      photos: photoUrls,
+      audioUrl,
       date: new Date(`${dateVal}T${timeVal}`),
       createdAt: serverTimestamp(),
     });
@@ -535,7 +558,7 @@ function renderDetail(id) {
       <p class="detail-date">${fmtDateLong(m.date)}</p>
       <h1 class="detail-title">${esc(m.title)}</h1>
       <div class="detail-badges"><span class="cat-badge ${m.category}">${m.category}</span></div>
-      ${m.audioData ? `<div class="detail-audio"><audio controls src="${m.audioData}" style="width:100%"></audio></div>` : ''}
+      ${(m.audioUrl || m.audioData) ? `<div class="detail-audio"><audio controls src="${m.audioUrl || m.audioData}" style="width:100%"></audio></div>` : ''}
       ${m.comment ? `<hr class="detail-divider"><p class="detail-comment">${esc(m.comment)}</p>` : ''}
     </div>`;
 
@@ -566,7 +589,15 @@ window.openDetailLightbox = openDetailLightbox;
 async function deleteMemory() {
   if (!currentMemId || !confirm('Apagar esta memória? Não pode ser desfeito.')) return;
   try {
+    const m = memories.find(x => x.id === currentMemId);
     await deleteDoc(doc(db, ALBUM_MEM, currentMemId));
+    // Apaga arquivos do Storage (ignora erros se não existirem)
+    if (m) {
+      for (let i = 0; i < MAX_PHOTOS; i++)
+        await deleteFromStorage(`album/memories/${currentMemId}/photo_${i}.jpg`);
+      for (const ext of ['webm', 'mp4', 'ogg', 'm4a', 'wav'])
+        await deleteFromStorage(`album/memories/${currentMemId}/audio.${ext}`);
+    }
     navigate('album');
     showToast('Memória apagada');
   } catch { showToast('Erro ao apagar'); }
@@ -639,6 +670,25 @@ function checkReminder() {
   }
 }
 window.saveReminders = saveReminders;
+
+// ===== FIREBASE STORAGE =====
+function dataUrlToBlob(dataUrl) {
+  const [header, data] = dataUrl.split(',');
+  const mime = header.match(/:(.*?);/)[1];
+  const binary = atob(data);
+  const arr = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+async function uploadToStorage(path, blob) {
+  const snapshot = await uploadBytes(ref(storage, path), blob);
+  return getDownloadURL(snapshot.ref);
+}
+
+async function deleteFromStorage(path) {
+  try { await deleteObject(ref(storage, path)); } catch (_) {}
+}
 
 // ===== IMAGE COMPRESSION =====
 function compressImage(file, maxPx, quality) {
