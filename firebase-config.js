@@ -1,8 +1,8 @@
 export const firebaseConfig = {
-  apiKey:            "AIzaSyAmWmi5HvsBoYGcUKFDbuHFKU408-mrkDo",
-  authDomain:        "diario-elias.firebaseapp.com",
-  projectId:         "diario-elias",
-  storageBucket:     "diario-elias.firebasestorage.app",
-  messagingSenderId: "253880973157",
-  appId:             "1:253880973157:web:267b119b06337e972c138c"
+  apiKey:            "AIzaSyBufArWZut2JCo4WWCJmS4yFNa6h218uaI",
+  authDomain:        "album-do-elias.firebaseapp.com",
+  projectId:         "album-do-elias",
+  storageBucket:     "album-do-elias.firebasestorage.app",
+  messagingSenderId: "997429253582",
+  appId:             "1:997429253582:web:e9f7c1ef1b2d985aa2879f"
 };
