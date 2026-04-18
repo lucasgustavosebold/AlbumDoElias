@@ -1,17 +1,9 @@
-const CACHE = 'album-elias-v3';
-const LOCAL_ASSETS = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/app.js',
-  '/firebase-config.js',
-  '/manifest.json',
-  '/icon.svg',
-];
+const CACHE = 'album-elias-v4';
+const STATIC = ['/', '/index.html', '/manifest.json', '/icon.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(LOCAL_ASSETS)).catch(() => {})
+    caches.open(CACHE).then(c => c.addAll(STATIC)).catch(() => {})
   );
   self.skipWaiting();
 });
@@ -36,6 +28,23 @@ self.addEventListener('fetch', e => {
     url.includes('cdnjs')
   ) return;
 
+  // JS e CSS: sempre busca na rede primeiro (garante código atualizado)
+  if (url.endsWith('.js') || url.endsWith('.css')) {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          if (res.ok) {
+            const clone = res.clone();
+            caches.open(CACHE).then(c => c.put(e.request, clone));
+          }
+          return res;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Demais assets: cache primeiro, rede como fallback
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
@@ -45,7 +54,7 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE).then(c => c.put(e.request, clone));
         }
         return res;
-      }).catch(() => cached);
+      });
     })
   );
 });
