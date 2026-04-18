@@ -40,6 +40,7 @@ const SUGGESTIONS = [
 
 // ===== STATE =====
 let currentUser   = null;
+let familyUID     = null;
 let memories      = [];
 let currentMemId  = null;
 let unsubMemories = null;
@@ -74,7 +75,7 @@ function showLogin() {
   if (unsubMemories) { unsubMemories(); unsubMemories = null; }
 }
 
-function showApp(user) {
+async function showApp(user) {
   hide('screen-loading');
   hide('screen-login');
   show('screen-app');
@@ -82,6 +83,7 @@ function showApp(user) {
   el('user-menu-avatar').src   = user.photoURL || '';
   el('user-menu-name').textContent  = user.displayName || '';
   el('user-menu-email').textContent = user.email || '';
+  await initFamily();
   subscribeMemories();
   loadCoverPhoto();
   updateAge();
@@ -90,6 +92,21 @@ function showApp(user) {
   renderSuggestions();
   window.addEventListener('hashchange', handleRoute);
   handleRoute();
+}
+
+async function initFamily() {
+  try {
+    const cfgRef  = doc(db, 'config', 'family');
+    const cfgSnap = await getDoc(cfgRef);
+    if (cfgSnap.exists()) {
+      familyUID = cfgSnap.data().ownerUID;
+    } else {
+      familyUID = currentUser.uid;
+      await setDoc(cfgRef, { ownerUID: currentUser.uid, createdAt: serverTimestamp() });
+    }
+  } catch {
+    familyUID = currentUser.uid;
+  }
 }
 
 // ===== USER MENU =====
@@ -101,7 +118,7 @@ window.signOutUser  = signOutUser;
 
 // ===== FIRESTORE =====
 function memoriesCol() {
-  return collection(db, `users/${currentUser.uid}/memories`);
+  return collection(db, `users/${familyUID}/memories`);
 }
 
 function subscribeMemories() {
@@ -200,7 +217,7 @@ function updateAge() {
 // ===== COVER PHOTO =====
 async function loadCoverPhoto() {
   try {
-    const snap = await getDoc(doc(db, 'users', currentUser.uid));
+    const snap = await getDoc(doc(db, 'users', familyUID));
     if (snap.exists() && snap.data().coverPhoto) applyCover(snap.data().coverPhoto);
   } catch (_) {}
 }
@@ -220,7 +237,7 @@ async function uploadCoverPhoto(e) {
   showToast('Processando capa...');
   const dataUrl = await compressImage(file, 1024, 0.78);
   applyCover(dataUrl);
-  await setDoc(doc(db, 'users', currentUser.uid), { coverPhoto: dataUrl }, { merge: true });
+  await setDoc(doc(db, 'users', familyUID), { coverPhoto: dataUrl }, { merge: true });
   showToast('Capa atualizada ✓');
 }
 
@@ -472,7 +489,7 @@ async function saveMemory(e) {
       createdAt: serverTimestamp(),
     });
 
-    await setDoc(doc(db, 'users', currentUser.uid), { lastMemoryAt: serverTimestamp() }, { merge: true });
+    await setDoc(doc(db, 'users', familyUID), { lastMemoryAt: serverTimestamp() }, { merge: true });
     showHeartAnimation();
     showToast('Memória salva com carinho ❤️');
     navigate('album');
@@ -536,7 +553,7 @@ window.openDetailLightbox = openDetailLightbox;
 async function deleteMemory() {
   if (!currentMemId || !confirm('Apagar esta memória? Não pode ser desfeito.')) return;
   try {
-    await deleteDoc(doc(db, `users/${currentUser.uid}/memories`, currentMemId));
+    await deleteDoc(doc(db, `users/${familyUID}/memories`, currentMemId));
     navigate('album');
     showToast('Memória apagada');
   } catch { showToast('Erro ao apagar'); }
