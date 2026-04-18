@@ -3,7 +3,7 @@ import { initializeApp }                              from 'https://www.gstatic.
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
                                                       from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, setDoc, addDoc, deleteDoc,
-         onSnapshot, query, orderBy, where, serverTimestamp }
+         onSnapshot, query, orderBy, serverTimestamp }
                                                       from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
 // ===== FIREBASE INIT =====
@@ -100,16 +100,20 @@ window.hideUserMenu = hideUserMenu;
 window.signOutUser  = signOutUser;
 
 // ===== FIRESTORE =====
+function memoriesCol() {
+  return collection(db, `users/${currentUser.uid}/memories`);
+}
+
 function subscribeMemories() {
   if (unsubMemories) unsubMemories();
-  const q = query(collection(db, 'memories'), where('uid', '==', currentUser.uid), orderBy('date', 'desc'));
+  const q = query(memoriesCol(), orderBy('date', 'desc'));
   unsubMemories = onSnapshot(q, snap => {
     memories = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     const p = currentPage();
     if (p === 'home')    renderHome();
     if (p === 'album')   renderAlbum();
     if (p === 'gallery') renderGallery();
-  });
+  }, err => console.error('Firestore error:', err));
 }
 
 // ===== ROUTING =====
@@ -425,8 +429,7 @@ async function saveMemory(e) {
     const comment = el('f-comment').value.trim();
     const photos  = selectedPhotos.filter(Boolean);
 
-    await addDoc(collection(db, 'memories'), {
-      uid: currentUser.uid,
+    await addDoc(memoriesCol(), {
       title, category: cat, comment,
       photos,
       audioData: selectedAudio?.dataUrl || null,
@@ -498,7 +501,7 @@ window.openDetailLightbox = openDetailLightbox;
 async function deleteMemory() {
   if (!currentMemId || !confirm('Apagar esta memória? Não pode ser desfeito.')) return;
   try {
-    await deleteDoc(doc(db, 'memories', currentMemId));
+    await deleteDoc(doc(db, `users/${currentUser.uid}/memories`, currentMemId));
     navigate('album');
     showToast('Memória apagada');
   } catch { showToast('Erro ao apagar'); }
