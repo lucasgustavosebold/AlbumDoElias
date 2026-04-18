@@ -248,14 +248,21 @@ function applyCover(dataUrl) {
 function triggerCoverUpload() { el('cover-upload-input').click(); }
 
 async function uploadCoverPhoto(e) {
-  const file = e.target.files[0];
+  const input = e.target;
+  const file  = input.files[0];
+  input.value = '';
   if (!file) return;
-  showToast('Enviando capa...');
-  const dataUrl = await compressImage(file, 1024, 0.78);
-  applyCover(dataUrl);
-  const url = await uploadToStorage('album/cover.jpg', dataUrlToBlob(dataUrl));
-  await setDoc(doc(db, ALBUM_META), { coverPhoto: url }, { merge: true });
-  showToast('Capa atualizada ✓');
+  try {
+    showToast('Enviando capa...');
+    const dataUrl = await compressImage(file, 1024, 0.78);
+    applyCover(dataUrl);
+    const url = await uploadToStorage('album/cover.jpg', dataUrlToBlob(dataUrl));
+    await setDoc(doc(db, ALBUM_META), { coverPhoto: url }, { merge: true });
+    showToast('Capa atualizada ✓');
+  } catch (err) {
+    console.error('Erro ao salvar capa:', err);
+    showToast('Erro ao salvar capa: ' + (err?.code || err?.message || 'desconhecido'));
+  }
 }
 
 window.triggerCoverUpload = triggerCoverUpload;
