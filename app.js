@@ -2,31 +2,21 @@ import { firebaseConfig } from './firebase-config.js';
 import { initializeApp }                              from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
                                                       from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
-import { getFirestore, collection, doc, setDoc, addDoc, deleteDoc, getDoc,
-         onSnapshot, query, orderBy, where, serverTimestamp, updateDoc }
+import { getFirestore, collection, doc, getDoc, setDoc, addDoc, deleteDoc,
+         onSnapshot, query, orderBy, where, serverTimestamp }
                                                       from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
-import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject }
-                                                      from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-storage.js';
 
 // ===== FIREBASE INIT =====
-const fbApp   = initializeApp(firebaseConfig);
-const auth    = getAuth(fbApp);
-const db      = getFirestore(fbApp);
-const storage = getStorage(fbApp);
+const fbApp = initializeApp(firebaseConfig);
+const auth  = getAuth(fbApp);
+const db    = getFirestore(fbApp);
 
-// ===== STATE =====
-const BIRTH = new Date('2026-04-02');
-let currentUser   = null;
-let memories      = [];
-let currentMemId  = null;
-let unsubMemories = null;
-let selectedPhotos = [];   // File[]
-let selectedAudio  = null; // { blob, url, type }
-let mediaRecorder  = null;
-let recInterval    = null;
-let recSeconds     = 0;
-let lightboxPhotos = [];
-let lightboxIndex  = 0;
+// ===== CONSTANTS =====
+const BIRTH      = new Date('2026-04-02');
+const MAX_PHOTOS = 6;
+const MAX_PX     = 720;
+const QUALITY    = 0.70;
+const MAX_REC_S  = 90; // seconds
 
 const PHRASES = [
   'Cada momento é pequeno demais para ser esquecido.',
@@ -41,30 +31,35 @@ const SUGGESTIONS = [
   '🌅 Como foi a manhã de hoje com o Elias?',
   '😴 Descreva como ele dormiu esta noite.',
   '😊 Ele fez alguma coisa fofa que te surpreendeu?',
-  '🍼 Como foi a amamentação / alimentação hoje?',
-  '🧸 Qual brinquedo ou objeto chamou a atenção dele?',
-  '💪 Algum novo movimento ou habilidade que ele demonstrou?',
-  '👨‍👩‍👦 Como foi o dia em família hoje?',
+  '🍼 Como foi a amamentação hoje?',
+  '🧸 Qual objeto chamou a atenção dele?',
+  '💪 Algum novo movimento ou habilidade?',
+  '👨‍👩‍👦 Como foi o dia em família?',
   '🩺 Alguma novidade de saúde ou desenvolvimento?',
 ];
 
+// ===== STATE =====
+let currentUser   = null;
+let memories      = [];
+let currentMemId  = null;
+let unsubMemories = null;
+let selectedPhotos = [];  // { dataUrl, file }[]
+let selectedAudio  = null; // { dataUrl, mimeType }
+let mediaRecorder  = null;
+let recInterval    = null;
+let recSeconds     = 0;
+let lightboxPhotos = [];
+let lightboxIndex  = 0;
+
 // ===== AUTH =====
 onAuthStateChanged(auth, user => {
-  if (user) {
-    currentUser = user;
-    showApp(user);
-  } else {
-    currentUser = null;
-    showLogin();
-  }
+  if (user) { currentUser = user; showApp(user); }
+  else      { currentUser = null; showLogin(); }
 });
 
 document.getElementById('btn-google-login').addEventListener('click', async () => {
-  try {
-    await signInWithPopup(auth, new GoogleAuthProvider());
-  } catch (e) {
-    showToast('Erro ao entrar. Tente novamente.');
-  }
+  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch { showToast('Erro ao entrar. Tente novamente.'); }
 });
 
 async function signOutUser() {
@@ -83,48 +78,37 @@ function showApp(user) {
   hide('screen-loading');
   hide('screen-login');
   show('screen-app');
-  document.getElementById('user-avatar').src = user.photoURL || '';
-  document.getElementById('user-menu-avatar').src = user.photoURL || '';
-  document.getElementById('user-menu-name').textContent = user.displayName || '';
-  document.getElementById('user-menu-email').textContent = user.email || '';
+  el('user-avatar').src        = user.photoURL || '';
+  el('user-menu-avatar').src   = user.photoURL || '';
+  el('user-menu-name').textContent  = user.displayName || '';
+  el('user-menu-email').textContent = user.email || '';
   subscribeMemories();
   loadCoverPhoto();
-  setInterval(updateAge, 60000);
   updateAge();
-  document.getElementById('home-phrase').textContent = PHRASES[Math.floor(Math.random() * PHRASES.length)];
+  setInterval(updateAge, 60000);
+  el('home-phrase').textContent = PHRASES[Math.floor(Math.random() * PHRASES.length)];
   renderSuggestions();
-  checkReminder();
   window.addEventListener('hashchange', handleRoute);
   handleRoute();
 }
 
 // ===== USER MENU =====
-function showUserMenu() {
-  show('user-menu');
-  show('user-menu-backdrop');
-}
-function hideUserMenu() {
-  hide('user-menu');
-  hide('user-menu-backdrop');
-}
-window.showUserMenu  = showUserMenu;
-window.hideUserMenu  = hideUserMenu;
-window.signOutUser   = signOutUser;
+function showUserMenu() { show('user-menu'); show('user-menu-backdrop'); }
+function hideUserMenu()  { hide('user-menu'); hide('user-menu-backdrop'); }
+window.showUserMenu = showUserMenu;
+window.hideUserMenu = hideUserMenu;
+window.signOutUser  = signOutUser;
 
 // ===== FIRESTORE =====
 function subscribeMemories() {
   if (unsubMemories) unsubMemories();
-  const q = query(
-    collection(db, 'memories'),
-    where('uid', '==', currentUser.uid),
-    orderBy('date', 'desc')
-  );
+  const q = query(collection(db, 'memories'), where('uid', '==', currentUser.uid), orderBy('date', 'desc'));
   unsubMemories = onSnapshot(q, snap => {
     memories = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const page = currentPage();
-    if (page === 'home')    renderHome();
-    if (page === 'album')   renderAlbum();
-    if (page === 'gallery') renderGallery();
+    const p = currentPage();
+    if (p === 'home')    renderHome();
+    if (p === 'album')   renderAlbum();
+    if (p === 'gallery') renderGallery();
   });
 }
 
@@ -144,36 +128,32 @@ function handleRoute() {
 function navigate(page, id) { location.hash = id ? `${page}/${id}` : page; }
 window.navigate = navigate;
 
-function currentPage() {
-  const h = location.hash.replace('#', '') || 'home';
-  return h.split('/')[0];
-}
+function currentPage() { return (location.hash.replace('#','') || 'home').split('/')[0]; }
 
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
-  const el = document.getElementById(`page-${name}`);
-  if (el) el.classList.remove('hidden');
+  el(`page-${name}`)?.classList.remove('hidden');
 }
 
 function updateNavTabs(page) {
-  document.querySelectorAll('.nav-tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.page === page);
-  });
-  const title = { home: 'Álbum do Elias', album: 'Álbum', gallery: 'Galeria', reminders: 'Lembretes', add: 'Nova Memória', detail: 'Memória' };
-  document.getElementById('top-bar-title').textContent = title[page] || 'Álbum do Elias';
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.page === page));
+  const titles = { home:'Álbum do Elias', album:'Álbum', gallery:'Galeria', reminders:'Lembretes', add:'Nova Memória', detail:'Memória' };
+  el('top-bar-title').textContent = titles[page] || 'Álbum do Elias';
 }
 
 // ===== HOME =====
 function renderHome() {
   renderStats();
-  const list  = document.getElementById('home-recent-list');
+  const list   = el('home-recent-list');
   const recent = memories.slice(0, 3);
   if (!recent.length) {
     list.innerHTML = `<div class="empty-state"><span class="empty-state-icon">📷</span><h3>Sem memórias ainda</h3><p>Toque em ＋ para criar a primeira</p></div>`;
     return;
   }
   list.innerHTML = recent.map(m => {
-    const thumb = m.photos?.[0] ? `<img class="mini-card-img" src="${m.photos[0]}" loading="lazy">` : `<div class="mini-card-no-photo">${catIcon(m.category)}</div>`;
+    const thumb = m.photos?.[0]
+      ? `<img class="mini-card-img" src="${m.photos[0]}" loading="lazy">`
+      : `<div class="mini-card-no-photo">${catIcon(m.category)}</div>`;
     return `<div class="mini-card" onclick="navigate('detail','${m.id}')">
       ${thumb}
       <div class="mini-card-body">
@@ -185,25 +165,24 @@ function renderHome() {
 }
 
 function renderStats() {
-  const el = document.getElementById('home-stats');
-  const total = memories.length;
+  const total  = memories.length;
   const photos = memories.reduce((s, m) => s + (m.photos?.length || 0), 0);
-  el.innerHTML = `
+  const last   = daysSinceLast();
+  el('home-stats').innerHTML = `
     <div class="home-stat"><div class="home-stat-num">${total}</div><div class="home-stat-label">Memórias</div></div>
     <div class="home-stat"><div class="home-stat-num">${photos}</div><div class="home-stat-label">Fotos</div></div>
-    <div class="home-stat"><div class="home-stat-num">${daysSinceLast()}</div><div class="home-stat-label">Dias desde a última</div></div>`;
+    <div class="home-stat"><div class="home-stat-num">${last}</div><div class="home-stat-label">Dias desde<br>a última</div></div>`;
 }
 
 function daysSinceLast() {
   if (!memories.length) return '—';
-  const last = memories[0];
-  const d = last.date?.toDate ? last.date.toDate() : new Date(last.date);
+  const d = memories[0].date?.toDate ? memories[0].date.toDate() : new Date(memories[0].date);
   return Math.floor((Date.now() - d) / 86400000);
 }
 
 function updateAge() {
-  const el = document.getElementById('home-age');
-  if (!el) return;
+  const el2 = el('home-age');
+  if (!el2) return;
   const days   = Math.floor((Date.now() - BIRTH) / 86400000);
   const weeks  = Math.floor(days / 7);
   const months = Math.floor(days / 30.44);
@@ -211,42 +190,34 @@ function updateAge() {
   if (days < 7)       txt = `${days} dia${days !== 1 ? 's' : ''} de vida`;
   else if (days < 60) txt = `${weeks} semana${weeks !== 1 ? 's' : ''} (${days} dias)`;
   else                txt = `${months} ${months === 1 ? 'mês' : 'meses'} de vida`;
-  el.textContent = `✦ ${txt}`;
+  el2.textContent = `✦ ${txt}`;
 }
 
 // ===== COVER PHOTO =====
 async function loadCoverPhoto() {
   try {
     const snap = await getDoc(doc(db, 'users', currentUser.uid));
-    if (snap.exists() && snap.data().coverPhotoUrl) {
-      setCoverPhoto(snap.data().coverPhotoUrl);
-    }
+    if (snap.exists() && snap.data().coverPhoto) applyCover(snap.data().coverPhoto);
   } catch (_) {}
 }
 
-function setCoverPhoto(url) {
-  const cover = document.getElementById('home-cover');
-  cover.style.backgroundImage = `url(${url})`;
-  cover.style.backgroundSize  = 'cover';
+function applyCover(dataUrl) {
+  const cover = el('home-cover');
+  cover.style.backgroundImage    = `url(${dataUrl})`;
+  cover.style.backgroundSize     = 'cover';
   cover.style.backgroundPosition = 'center';
 }
 
-function triggerCoverUpload() {
-  document.getElementById('cover-upload-input').click();
-}
+function triggerCoverUpload() { el('cover-upload-input').click(); }
 
 async function uploadCoverPhoto(e) {
   const file = e.target.files[0];
   if (!file) return;
-  showToast('Enviando capa...');
-  const r = ref(storage, `covers/${currentUser.uid}/cover.jpg`);
-  const task = uploadBytesResumable(r, file);
-  task.on('state_changed', null, () => showToast('Erro ao enviar capa'), async () => {
-    const url = await getDownloadURL(task.snapshot.ref);
-    setCoverPhoto(url);
-    await setDoc(doc(db, 'users', currentUser.uid), { coverPhotoUrl: url }, { merge: true });
-    showToast('Capa atualizada ✓');
-  });
+  showToast('Processando capa...');
+  const dataUrl = await compressImage(file, 1024, 0.78);
+  applyCover(dataUrl);
+  await setDoc(doc(db, 'users', currentUser.uid), { coverPhoto: dataUrl }, { merge: true });
+  showToast('Capa atualizada ✓');
 }
 
 window.triggerCoverUpload = triggerCoverUpload;
@@ -256,10 +227,10 @@ window.uploadCoverPhoto   = uploadCoverPhoto;
 let albumFilter = 'all';
 
 function renderAlbum() {
-  const list = document.getElementById('album-list');
+  const list     = el('album-list');
   const filtered = albumFilter === 'all' ? memories : memories.filter(m => m.category === albumFilter);
   if (!filtered.length) {
-    list.innerHTML = `<div class="empty-state"><span class="empty-state-icon">📖</span><h3>Nenhuma memória${albumFilter !== 'all' ? ' nessa categoria' : ''}</h3><p>Toque em ＋ para criar</p></div>`;
+    list.innerHTML = `<div class="empty-state"><span class="empty-state-icon">📖</span><h3>Nenhuma memória${albumFilter !== 'all' ? ' aqui' : ''}</h3><p>Toque em ＋ para criar</p></div>`;
     return;
   }
   list.innerHTML = filtered.map(m => {
@@ -272,7 +243,7 @@ function renderAlbum() {
           <span class="memory-card-date">${fmtDate(m.date)}</span>
           <div class="memory-card-badges">
             <span class="cat-badge ${m.category}">${m.category}</span>
-            ${m.audioUrl ? '<span class="audio-badge">🎙️</span>' : ''}
+            ${m.audioData ? '<span class="audio-badge">🎙️</span>' : ''}
           </div>
         </div>
         <h3 class="memory-card-title">${esc(m.title)}</h3>
@@ -282,7 +253,7 @@ function renderAlbum() {
   }).join('');
 }
 
-document.getElementById('album-filters').addEventListener('click', e => {
+el('album-filters').addEventListener('click', e => {
   const chip = e.target.closest('.filter-chip');
   if (!chip) return;
   document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
@@ -293,44 +264,37 @@ document.getElementById('album-filters').addEventListener('click', e => {
 
 // ===== GALLERY =====
 function renderGallery() {
-  const grid = document.getElementById('gallery-grid');
+  const grid      = el('gallery-grid');
   const allPhotos = [];
   memories.forEach(m => (m.photos || []).forEach(url => allPhotos.push({ url, title: m.title, date: m.date, memId: m.id })));
   if (!allPhotos.length) {
-    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><span class="empty-state-icon">🖼️</span><h3>Nenhuma foto ainda</h3><p>Adicione fotos nas memórias</p></div>`;
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><span class="empty-state-icon">🖼️</span><h3>Nenhuma foto ainda</h3></div>`;
     return;
   }
   grid.innerHTML = allPhotos.map((p, i) =>
-    `<div class="gallery-item" onclick="openLightbox(${i})">
-      <img src="${p.url}" alt="${esc(p.title)}" loading="lazy">
-    </div>`).join('');
+    `<div class="gallery-item" onclick="openLightbox(${i})"><img src="${p.url}" alt="${esc(p.title)}" loading="lazy"></div>`
+  ).join('');
   lightboxPhotos = allPhotos;
 }
 
 // ===== LIGHTBOX =====
 function openLightbox(i) {
   lightboxIndex = i;
-  renderLightbox();
+  renderLightboxImg();
   show('lightbox');
 }
-
-function renderLightbox() {
+function renderLightboxImg() {
   const p = lightboxPhotos[lightboxIndex];
-  document.getElementById('lightbox-img').src = p.url;
-  document.getElementById('lightbox-caption').textContent = `${p.title} — ${fmtDate(p.date)}`;
+  el('lightbox-img').src = p.url;
+  el('lightbox-caption').textContent = `${p.title} — ${fmtDate(p.date)}`;
 }
-
 function lightboxNav(dir) {
   lightboxIndex = (lightboxIndex + dir + lightboxPhotos.length) % lightboxPhotos.length;
-  renderLightbox();
+  renderLightboxImg();
 }
-
 function closeLightbox(e) {
-  if (!e || e.target === document.getElementById('lightbox') || e.target.classList.contains('lightbox-close')) {
-    hide('lightbox');
-  }
+  if (!e || e.target === el('lightbox') || e.target.classList.contains('lightbox-close')) hide('lightbox');
 }
-
 window.openLightbox  = openLightbox;
 window.lightboxNav   = lightboxNav;
 window.closeLightbox = closeLightbox;
@@ -339,184 +303,141 @@ window.closeLightbox = closeLightbox;
 function initAddForm() {
   selectedPhotos = [];
   selectedAudio  = null;
-  document.getElementById('add-form').reset();
-  document.getElementById('photo-previews').innerHTML = '';
-  document.getElementById('audio-preview').innerHTML = '';
+  el('add-form').reset();
+  el('photo-previews').innerHTML = '';
+  el('audio-preview').innerHTML  = '';
   hide('audio-preview');
   hide('rec-timer');
-  document.getElementById('btn-record').classList.remove('recording');
-  document.getElementById('rec-label').textContent = 'Gravar';
-  document.getElementById('rec-icon').textContent = '🎙️';
+  el('btn-record').classList.remove('recording');
+  el('rec-label').textContent = 'Gravar';
+  el('rec-icon').textContent  = '🎙️';
   const now = new Date();
-  document.getElementById('f-date').value = toDateVal(now);
-  document.getElementById('f-time').value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  el('f-date').value = toDateVal(now);
+  el('f-time').value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 
 function onPhotosSelected(e) {
   const files = Array.from(e.target.files);
-  files.forEach(f => {
-    selectedPhotos.push(f);
-    const reader = new FileReader();
-    reader.onload = ev => addPhotoPreview(ev.target.result, selectedPhotos.length - 1);
-    reader.readAsDataURL(f);
+  if (selectedPhotos.length + files.length > MAX_PHOTOS) {
+    showToast(`Máximo de ${MAX_PHOTOS} fotos por memória`); return;
+  }
+  files.forEach(async f => {
+    const dataUrl = await compressImage(f, MAX_PX, QUALITY);
+    selectedPhotos.push(dataUrl);
+    addPhotoPreview(dataUrl, selectedPhotos.length - 1);
   });
   e.target.value = '';
 }
 
 function addPhotoPreview(src, index) {
-  const container = document.getElementById('photo-previews');
   const div = document.createElement('div');
-  div.className = 'photo-preview-item';
-  div.id = `photo-prev-${index}`;
-  div.innerHTML = `
-    <img src="${src}" alt="">
-    <button type="button" class="photo-preview-remove" onclick="removePhoto(${index})">✕</button>
-    <div class="photo-upload-progress" id="prog-${index}">
-      <div class="photo-upload-progress-bar" id="progbar-${index}" style="width:0"></div>
-    </div>`;
-  container.appendChild(div);
+  div.className = `photo-preview-item`;
+  div.id = `pprev-${index}`;
+  div.innerHTML = `<img src="${src}" alt=""><button type="button" class="photo-preview-remove" onclick="removePhoto(${index})">✕</button>`;
+  el('photo-previews').appendChild(div);
 }
 
 function removePhoto(index) {
   selectedPhotos[index] = null;
-  const el = document.getElementById(`photo-prev-${index}`);
-  if (el) el.remove();
+  el(`pprev-${index}`)?.remove();
 }
 
 window.onPhotosSelected = onPhotosSelected;
 window.removePhoto      = removePhoto;
 
-// ===== AUDIO RECORDING =====
+// ===== AUDIO =====
 function onAudioFileSelected(e) {
   const file = e.target.files[0];
   if (!file) return;
-  selectedAudio = { blob: file, url: URL.createObjectURL(file), type: file.type };
-  showAudioPreview(selectedAudio.url);
+  const reader = new FileReader();
+  reader.onload = ev => {
+    selectedAudio = { dataUrl: ev.target.result, mimeType: file.type };
+    showAudioPreview(selectedAudio.dataUrl);
+  };
+  reader.readAsDataURL(file);
 }
 
 async function toggleRecording() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    stopRecording();
-  } else {
-    await startRecording();
-  }
+  if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording();
+  else await startRecording();
 }
 
 async function startRecording() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream   = await navigator.mediaDevices.getUserMedia({ audio: true });
     const mimeType = ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg'].find(t => MediaRecorder.isTypeSupported(t)) || '';
-    mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
-    const chunks = [];
+    mediaRecorder  = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+    const chunks   = [];
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
     mediaRecorder.onstop = () => {
       stream.getTracks().forEach(t => t.stop());
-      const blob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-      selectedAudio = { blob, url: URL.createObjectURL(blob), type: blob.type };
-      showAudioPreview(selectedAudio.url);
+      const blob   = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+      const reader = new FileReader();
+      reader.onload = ev => {
+        selectedAudio = { dataUrl: ev.target.result, mimeType: blob.type };
+        showAudioPreview(selectedAudio.dataUrl);
+      };
+      reader.readAsDataURL(blob);
     };
     mediaRecorder.start(200);
     recSeconds = 0;
-    const btn = document.getElementById('btn-record');
-    btn.classList.add('recording');
-    document.getElementById('rec-label').textContent = 'Parar';
-    document.getElementById('rec-icon').textContent = '⏹';
+    el('btn-record').classList.add('recording');
+    el('rec-label').textContent = 'Parar';
+    el('rec-icon').textContent  = '⏹';
     show('rec-timer');
     recInterval = setInterval(() => {
       recSeconds++;
-      const m = Math.floor(recSeconds / 60), s = recSeconds % 60;
-      document.getElementById('rec-time').textContent = `${m}:${String(s).padStart(2,'0')}`;
+      el('rec-time').textContent = `${Math.floor(recSeconds/60)}:${pad(recSeconds%60)}`;
+      if (recSeconds >= MAX_REC_S) stopRecording();
     }, 1000);
-  } catch {
-    showToast('Microfone não disponível');
-  }
+  } catch { showToast('Microfone não disponível'); }
 }
 
 function stopRecording() {
   if (mediaRecorder) mediaRecorder.stop();
   clearInterval(recInterval);
-  const btn = document.getElementById('btn-record');
-  btn.classList.remove('recording');
-  document.getElementById('rec-label').textContent = 'Gravar';
-  document.getElementById('rec-icon').textContent = '🎙️';
+  el('btn-record').classList.remove('recording');
+  el('rec-label').textContent = 'Gravar';
+  el('rec-icon').textContent  = '🎙️';
   hide('rec-timer');
 }
 
-function showAudioPreview(url) {
-  const el = document.getElementById('audio-preview');
-  el.innerHTML = `<audio controls src="${url}" style="width:100%;border-radius:8px"></audio>`;
+function showAudioPreview(dataUrl) {
+  el('audio-preview').innerHTML = `<audio controls src="${dataUrl}" style="width:100%;border-radius:8px"></audio>`;
   show('audio-preview');
 }
 
-window.toggleRecording   = toggleRecording;
+window.toggleRecording     = toggleRecording;
 window.onAudioFileSelected = onAudioFileSelected;
 
 // ===== SAVE MEMORY =====
 async function saveMemory(e) {
   e.preventDefault();
   if (!currentUser) return;
-
-  const btn = document.getElementById('btn-save');
+  const btn = el('btn-save');
   btn.disabled = true;
   btn.textContent = '⏳ Salvando...';
-
   try {
-    const dateVal = document.getElementById('f-date').value;
-    const timeVal = document.getElementById('f-time').value || '00:00';
-    const dateObj = new Date(`${dateVal}T${timeVal}`);
-    const title   = document.getElementById('f-title').value.trim();
+    const dateVal = el('f-date').value;
+    const timeVal = el('f-time').value || '00:00';
+    const title   = el('f-title').value.trim();
     const cat     = document.querySelector('input[name="cat"]:checked')?.value || 'Cotidiano';
-    const comment = document.getElementById('f-comment').value.trim();
-
-    // Upload photos
-    const photoUrls = [];
-    const validPhotos = selectedPhotos.filter(Boolean);
-    for (let i = 0; i < validPhotos.length; i++) {
-      btn.textContent = `📷 Foto ${i + 1}/${validPhotos.length}...`;
-      const compressed = await compressImage(validPhotos[i], 1200, 0.80);
-      const blob = await fetch(compressed).then(r => r.blob());
-      const r = ref(storage, `memories/${currentUser.uid}/${Date.now()}_${i}.jpg`);
-      const task = uploadBytesResumable(r, blob);
-      const url = await new Promise((res, rej) => {
-        task.on('state_changed',
-          snap => {
-            const pct = Math.round(snap.bytesTransferred / snap.totalBytes * 100);
-            const bar = document.getElementById(`progbar-${selectedPhotos.indexOf(validPhotos[i])}`);
-            if (bar) bar.style.width = pct + '%';
-          },
-          rej,
-          async () => res(await getDownloadURL(task.snapshot.ref))
-        );
-      });
-      photoUrls.push(url);
-    }
-
-    // Upload audio
-    let audioUrl = null;
-    if (selectedAudio) {
-      btn.textContent = '🎙️ Enviando áudio...';
-      const ext = selectedAudio.type.includes('mp4') ? 'mp4' : selectedAudio.type.includes('ogg') ? 'ogg' : 'webm';
-      const r = ref(storage, `memories/${currentUser.uid}/${Date.now()}_audio.${ext}`);
-      const task = uploadBytesResumable(r, selectedAudio.blob);
-      audioUrl = await new Promise((res, rej) =>
-        task.on('state_changed', null, rej, async () => res(await getDownloadURL(task.snapshot.ref)))
-      );
-    }
+    const comment = el('f-comment').value.trim();
+    const photos  = selectedPhotos.filter(Boolean);
 
     await addDoc(collection(db, 'memories'), {
       uid: currentUser.uid,
       title, category: cat, comment,
-      photos: photoUrls, audioUrl,
-      date: dateObj,
+      photos,
+      audioData: selectedAudio?.dataUrl || null,
+      date: new Date(`${dateVal}T${timeVal}`),
       createdAt: serverTimestamp(),
     });
 
     await setDoc(doc(db, 'users', currentUser.uid), { lastMemoryAt: serverTimestamp() }, { merge: true });
-
     showHeartAnimation();
     showToast('Memória salva com carinho ❤️');
     navigate('album');
-
   } catch (err) {
     showToast('Erro ao salvar: ' + err.message);
   } finally {
@@ -524,53 +445,50 @@ async function saveMemory(e) {
     btn.textContent = 'Salvar com carinho ❤️';
   }
 }
-
 window.saveMemory = saveMemory;
 
 // ===== DETAIL =====
 function renderDetail(id) {
-  const m = memories.find(x => x.id === id);
-  const el = document.getElementById('detail-content');
-  if (!m) { el.innerHTML = '<p style="padding:20px;color:#999">Memória não encontrada.</p>'; return; }
+  const m  = memories.find(x => x.id === id);
+  const ct = el('detail-content');
+  if (!m) { ct.innerHTML = '<p style="padding:20px;color:#999">Não encontrado.</p>'; return; }
 
   const photos = m.photos || [];
-  const carouselHtml = photos.length
-    ? `<div class="photo-carousel" id="carousel-${id}">
-        ${photos.map(p => `<div class="carousel-slide"><img src="${p}" alt="${esc(m.title)}" onclick="openDetailLightbox('${id}',${photos.indexOf(p)})"></div>`).join('')}
+  const carousel = photos.length
+    ? `<div class="photo-carousel" id="car-${id}">
+        ${photos.map((p,i) => `<div class="carousel-slide"><img src="${p}" onclick="openDetailLightbox('${id}',${i})"></div>`).join('')}
       </div>
-      ${photos.length > 1 ? `<div class="carousel-dots">${photos.map((_,i) => `<button class="carousel-dot ${i===0?'active':''}" onclick="carouselGo('${id}',${i})"></button>`).join('')}</div>` : ''}` : '';
+      ${photos.length > 1 ? `<div class="carousel-dots">${photos.map((_,i) => `<button class="carousel-dot ${i===0?'active':''}" onclick="carouselGo('${id}',${i})"></button>`).join('')}</div>` : ''}`
+    : '';
 
-  el.innerHTML = `
-    ${carouselHtml}
+  ct.innerHTML = `
+    ${carousel}
     <div class="detail-body">
       <p class="detail-date">${fmtDateLong(m.date)}</p>
       <h1 class="detail-title">${esc(m.title)}</h1>
-      <div class="detail-badges">
-        <span class="cat-badge ${m.category}">${m.category}</span>
-      </div>
-      ${m.audioUrl ? `<div class="detail-audio"><audio controls src="${m.audioUrl}" style="width:100%"></audio></div>` : ''}
+      <div class="detail-badges"><span class="cat-badge ${m.category}">${m.category}</span></div>
+      ${m.audioData ? `<div class="detail-audio"><audio controls src="${m.audioData}" style="width:100%"></audio></div>` : ''}
       ${m.comment ? `<hr class="detail-divider"><p class="detail-comment">${esc(m.comment)}</p>` : ''}
     </div>`;
 
   if (photos.length > 1) {
-    const c = document.getElementById(`carousel-${id}`);
+    const c = el(`car-${id}`);
     c.addEventListener('scroll', () => {
       const idx = Math.round(c.scrollLeft / c.offsetWidth);
-      document.querySelectorAll('.carousel-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+      document.querySelectorAll('.carousel-dot').forEach((d,i) => d.classList.toggle('active', i === idx));
     });
   }
-
   lightboxPhotos = photos.map(url => ({ url, title: m.title, date: m.date }));
 }
 
 function carouselGo(id, idx) {
-  const c = document.getElementById(`carousel-${id}`);
+  const c = el(`car-${id}`);
   if (c) c.scrollTo({ left: idx * c.offsetWidth, behavior: 'smooth' });
 }
 
 function openDetailLightbox(id, idx) {
   lightboxIndex = idx;
-  renderLightbox();
+  renderLightboxImg();
   show('lightbox');
 }
 
@@ -579,37 +497,26 @@ window.openDetailLightbox = openDetailLightbox;
 
 async function deleteMemory() {
   if (!currentMemId || !confirm('Apagar esta memória? Não pode ser desfeito.')) return;
-  const m = memories.find(x => x.id === currentMemId);
   try {
-    for (const url of (m?.photos || [])) {
-      try { await deleteObject(ref(storage, url)); } catch (_) {}
-    }
-    if (m?.audioUrl) {
-      try { await deleteObject(ref(storage, m.audioUrl)); } catch (_) {}
-    }
     await deleteDoc(doc(db, 'memories', currentMemId));
     navigate('album');
     showToast('Memória apagada');
-  } catch (err) {
-    showToast('Erro ao apagar');
-  }
+  } catch { showToast('Erro ao apagar'); }
 }
-
 window.deleteMemory = deleteMemory;
 
 // ===== SHARE =====
 async function shareMemory() {
   const m = memories.find(x => x.id === currentMemId);
   if (!m) return;
-
   try {
-    const target = document.getElementById('share-target');
+    const target = el('share-target');
     target.classList.remove('hidden');
-    target.style.cssText = 'position:fixed;top:0;left:0;width:375px;background:#FAF7F2;padding:20px;font-family:Georgia,serif;';
+    target.style.cssText = 'position:fixed;top:0;left:0;width:375px;background:#FAF7F2;padding:24px;font-family:Georgia,serif;z-index:-1;';
     target.innerHTML = `
-      <div style="text-align:center;padding:20px 0">
-        <div style="font-size:24px;color:#B8922A;margin-bottom:8px">✦ Álbum do Elias</div>
-        <h2 style="font-size:24px;font-style:italic;color:#2C1E14;margin-bottom:6px">${esc(m.title)}</h2>
+      <div style="text-align:center;padding:16px 0">
+        <div style="font-size:22px;color:#B8922A;margin-bottom:10px">✦ Álbum do Elias</div>
+        <h2 style="font-size:22px;font-style:italic;color:#2C1E14;margin-bottom:6px">${esc(m.title)}</h2>
         <p style="font-size:13px;color:#A08878">${fmtDateLong(m.date)}</p>
         ${m.photos?.[0] ? `<img src="${m.photos[0]}" style="width:100%;max-height:260px;object-fit:contain;border-radius:12px;margin-top:14px;background:#F5EDE0">` : ''}
         ${m.comment ? `<p style="font-size:14px;color:#6B5540;margin-top:14px;line-height:1.7;text-align:left">${esc(m.comment)}</p>` : ''}
@@ -632,38 +539,37 @@ async function shareMemory() {
     });
   } catch { showToast('Erro ao compartilhar'); }
 }
-
 window.shareMemory = shareMemory;
 
 // ===== REMINDERS =====
 function renderSuggestions() {
-  document.getElementById('suggestions-list').innerHTML = SUGGESTIONS
+  el('suggestions-list').innerHTML = [...SUGGESTIONS]
     .sort(() => 0.5 - Math.random()).slice(0, 4)
     .map(s => `<div class="suggestion-item">${s}</div>`).join('');
 }
 
 async function saveReminders() {
-  const days = parseInt(document.getElementById('r-days').value);
+  const days = parseInt(el('r-days').value);
   if (Notification.permission !== 'granted') {
     const p = await Notification.requestPermission();
-    if (p !== 'granted') { showToast('Permissão negada para notificações'); return; }
+    if (p !== 'granted') { showToast('Permissão negada'); return; }
   }
-  localStorage.setItem('reminder_days', days);
+  localStorage.setItem('reminder_days',    days);
   localStorage.setItem('reminder_enabled', '1');
   showToast(`Lembrete a cada ${days} dia${days > 1 ? 's' : ''} ativado ✓`);
+  checkReminder();
 }
 
 function checkReminder() {
   if (!localStorage.getItem('reminder_enabled')) return;
   const days = parseInt(localStorage.getItem('reminder_days') || '2');
-  if (daysSinceLast() >= days && typeof daysSinceLast() === 'number' && Notification.permission === 'granted') {
+  const last = daysSinceLast();
+  if (typeof last === 'number' && last >= days && Notification.permission === 'granted') {
     new Notification('Álbum do Elias 🌙', {
-      body: `Faz ${daysSinceLast()} dia(s) desde a última memória — registre algo hoje!`,
-      icon: '/favicon.ico',
+      body: `Faz ${last} dia${last !== 1 ? 's' : ''} desde a última memória — registre algo hoje!`,
     });
   }
 }
-
 window.saveReminders = saveReminders;
 
 // ===== IMAGE COMPRESSION =====
@@ -690,48 +596,45 @@ function compressImage(file, maxPx, quality) {
 
 // ===== HEART ANIMATION =====
 function showHeartAnimation() {
-  const div = document.createElement('div');
-  div.className = 'heart-anim';
-  div.innerHTML = '<span>❤️</span>';
-  document.body.appendChild(div);
-  setTimeout(() => div.remove(), 1000);
+  const d = document.createElement('div');
+  d.className = 'heart-anim';
+  d.innerHTML = '<span>❤️</span>';
+  document.body.appendChild(d);
+  setTimeout(() => d.remove(), 900);
 }
 
 // ===== TOAST =====
 function showToast(msg, ms = 3000) {
-  const t = document.getElementById('toast');
+  const t = el('toast');
   t.textContent = msg;
   t.classList.remove('hidden');
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.add('hidden'), ms);
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.add('hidden'), ms);
 }
 
-// ===== HELPERS =====
-function show(id) { document.getElementById(id)?.classList.remove('hidden'); }
-function hide(id) { document.getElementById(id)?.classList.add('hidden'); }
+// ===== UTILS =====
+function el(id) { return document.getElementById(id); }
+function show(id) { el(id)?.classList.remove('hidden'); }
+function hide(id) { el(id)?.classList.add('hidden'); }
+function pad(n) { return String(n).padStart(2, '0'); }
 
 function fmtDate(val) {
   if (!val) return '';
   const d = val?.toDate ? val.toDate() : new Date(val);
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString('pt-BR', { day:'2-digit', month:'short', year:'numeric' });
 }
-
 function fmtDateLong(val) {
   if (!val) return '';
   const d = val?.toDate ? val.toDate() : new Date(val);
-  return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString('pt-BR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
 }
-
 function toDateVal(d) {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
-
 function esc(s) {
   if (!s) return '';
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-
 function catIcon(cat) {
-  const icons = { Cotidiano:'☀️', Família:'👨‍👩‍👦', Passeio:'🌳', Consulta:'🩺', Soninho:'🌙', Especial:'✦' };
-  return icons[cat] || '📸';
+  return { Cotidiano:'☀️', Família:'👨‍👩‍👦', Passeio:'🌳', Consulta:'🩺', Soninho:'🌙', Especial:'✦' }[cat] || '📸';
 }
